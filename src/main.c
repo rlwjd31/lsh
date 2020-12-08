@@ -2,9 +2,9 @@
 
   @file         main.c
 
-  @author       Stephen Brennan
+  @author       Gi jung Park & Han Jun Kwon
 
-  @date         Thursday,  8 January 2015
+  @date         Wednesday,  9 December 2020
 
   @brief        LSH (Libstephen SHell)
 
