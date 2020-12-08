@@ -16,6 +16,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#define BUF_SIZE 1024
+#define MAX_LOGIN 1
 
 /*
   Function Declarations for builtin shell commands:
@@ -23,6 +25,14 @@
 int lsh_cd(char **args);
 int lsh_help(char **args);
 int lsh_exit(char **args);
+
+
+/*
+  declare append functions
+*/
+int get_pid(char *s);
+int check_logon(char* ip_addr);
+void store_failed_log(char* log);
 
 /*
   List of builtin commands, followed by their corresponding functions.
@@ -69,6 +79,8 @@ int lsh_cd(char **args)
    @param args List of args.  Not examined.
    @return Always returns 1, to continue executing.
  */
+
+
 int lsh_help(char **args)
 {
   int i;
@@ -264,6 +276,97 @@ void lsh_loop(void)
   } while (status);
 }
 
+// get only process number from \proc\*
+int get_pid(char *s)
+{
+	int len, i;
+	
+	len = strlen(s);
+	for(i=0;i<len;i++)
+	{
+	  if((s[i] < '0' || s[i] > '9'))
+		{
+			return -1;
+		}
+	}
+	return atoi(s);
+}
+
+// check lsh is turned on or of by process
+int check_logon(char* ip_addr)
+{
+	DIR *dp;
+	struct dirent *dir;
+	char buf[BUF_SIZE], line[BUF_SIZE], tag[BUF_SIZE], name[BUF_SIZE], log[BUF_SIZE];
+	char program_name[BUF_SIZE] = "lsh";
+	int pid;
+	int logon_count = 0;
+	FILE *fp;
+	time_t now;
+	char *cur_time;
+
+	dp = opendir("/proc");
+	if(!dp)
+	{
+		return -1;
+	}
+	
+
+	while((dir = readdir(dp)) != NULL)
+	{
+		pid = get_pid(dir->d_name);
+
+		if(pid == -1)
+		{
+			continue;
+		}
+
+		snprintf(buf, 100, "/proc/%d/status", pid);
+		fp = fopen(buf, "r");
+		if(fp == NULL)
+		{
+			continue;
+		}
+
+		fgets(line, BUF_SIZE, fp);
+		fclose(fp);
+		sscanf(line, "%s %s", tag, name);
+		
+		if(strcmp(name, program_name) == 0)
+		{
+			logon_count += 1;
+			if(logon_count == MAX_LOGIN + 1)
+			{
+				printf("이미실행중입니다.\n");
+				time(&now);
+				cur_time = ctime(&now);
+				cur_time[strlen(cur_time)-1]='\0';
+				sprintf(log, "%s FULL LOGIN %s\n", cur_time, ip_addr);
+				store_failed_log(log);
+				return 1;
+			}
+		}
+	}
+	closedir(dp);
+	return 0;
+}
+
+// if login failed then save the log at failed_log
+// doesn't matter if ip isn't in whiteiplist or other user already using lsh then save log 
+void store_failed_log(char* log)
+{
+	FILE *fp;
+	fp = fopen("failed_log", "a");
+
+	if(fp == NULL)
+	{
+		printf("error! failed to write log\n");
+		exit(0);
+	}
+
+	fwrite(log, strlen(log), 1, fp);
+}
+
 /**
    @brief Main entry point.
    @param argc Argument count.
@@ -272,6 +375,17 @@ void lsh_loop(void)
  */
 int main(int argc, char **argv)
 {
+	int check_result, IP_result;
+	char* s = getenv("SSH_CLIENT");
+	char CLIENT_IP[BUF_SIZE], CLIENT_PORT[BUF_SIZE], SERVER_PORT[BUF_SIZE];
+
+	sscanf(s, "%s %s %s", CLIENT_IP, CLIENT_PORT, SERVER_PORT);
+  
+	check_result = check_logon(CLIENT_IP);
+	if(check_result == 1)
+	{
+		exit(0);
+	}
   // Load config files, if any.
 
   // Run command loop.
