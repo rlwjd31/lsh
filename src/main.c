@@ -16,8 +16,12 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#define BUF_SIZE 1024
+#include <termio.h>
+#include <dirent.h>
+#include <time.h>
+
 #define MAX_LOGIN 1
+#define BUF_SIZE 1024
 
 /*
   Function Declarations for builtin shell commands:
@@ -26,12 +30,14 @@ int lsh_cd(char **args);
 int lsh_help(char **args);
 int lsh_exit(char **args);
 
-
 /*
-  declare append functions
+  declartion of appended functions
 */
 int get_pid(char *s);
 int check_logon(char* ip_addr);
+void login(char* ip_addr);
+int white_list(char* ip_addr);
+void store_login_log(char* log);
 void store_failed_log(char* log);
 
 /*
@@ -40,13 +46,13 @@ void store_failed_log(char* log);
 char *builtin_str[] = {
   "cd",
   "help",
-  "exit"
+  "exit",
 };
 
 int (*builtin_func[]) (char **) = {
   &lsh_cd,
   &lsh_help,
-  &lsh_exit
+  &lsh_exit,
 };
 
 int lsh_num_builtins() {
@@ -79,8 +85,6 @@ int lsh_cd(char **args)
    @param args List of args.  Not examined.
    @return Always returns 1, to continue executing.
  */
-
-
 int lsh_help(char **args)
 {
   int i;
@@ -292,6 +296,25 @@ int get_pid(char *s)
 	return atoi(s);
 }
 
+// getch function in window can be used in linux environment
+// we must input pw data by getch function to protect data appeared at screen
+int getch(void)
+{
+	int ch;							 
+	struct termios buf;
+	struct termios save;
+
+	tcgetattr(0, &save);
+	buf = save;
+	buf.c_lflag &= ~(ICANON|ECHO);
+	buf.c_cc[VMIN] = 1;
+	buf.c_cc[VTIME] = 0;
+	tcsetattr(0, TCSAFLUSH, &buf);
+	ch = getchar();	
+	tcsetattr(0, TCSAFLUSH, &save);
+	return ch;
+}
+
 // check lsh is turned on or of by process
 int check_logon(char* ip_addr)
 {
@@ -311,7 +334,7 @@ int check_logon(char* ip_addr)
 		return -1;
 	}
 	
-
+	
 	while((dir = readdir(dp)) != NULL)
 	{
 		pid = get_pid(dir->d_name);
@@ -351,6 +374,66 @@ int check_logon(char* ip_addr)
 	return 0;
 }
 
+// get blocked lp list from list file and compare ip that is using and if not matched then execute block
+int white_list(char* ip_addr)
+{
+	FILE *fp;
+	char list_ip[BUF_SIZE][BUF_SIZE];
+	char log[BUF_SIZE];
+	char *cur_time;
+	time_t now;
+	int i, lines;
+
+	fp = fopen("list", "r");
+	
+	if(fp == NULL)
+	{
+		printf("error! block all IP\n");
+		exit(0);
+	}
+
+	i = 0;
+
+	while(fgets(list_ip[i], BUF_SIZE, fp))
+	{
+		list_ip[i][strlen(list_ip[i]) - 1] = '\0';
+		i++;
+	}
+
+
+	for (int lines=0;lines<i;lines++)
+	{
+		if(strcmp(list_ip[lines], ip_addr) == 0)
+		{
+			return 0;
+		}
+	}
+  printf("NOT ALLOWED IP\n");
+	
+	time(&now);
+	cur_time = ctime(&now);
+	cur_time[strlen(cur_time)-1]='\0';
+	sprintf(log, "%s NOT ALLOWED IP %s\n", cur_time, ip_addr);
+	store_failed_log(log);
+	return 1;
+}
+
+// save log at login_log file if login succeed
+void store_login_log(char* log)
+{
+	FILE *fp;
+	fp = fopen("login_log", "a");
+	
+	if(fp == NULL)
+	{
+		printf("error! failed to write log\n");
+		exit(0);
+	}
+
+	fwrite(log, strlen(log), 1,fp);
+}
+
+
 // if login failed then save the log at failed_log
 // doesn't matter if ip isn't in whiteiplist or other user already using lsh then save log 
 void store_failed_log(char* log)
@@ -367,6 +450,71 @@ void store_failed_log(char* log)
 	fwrite(log, strlen(log), 1, fp);
 }
 
+
+void login(char* ip_addr)
+{
+	FILE *fp;
+	char data_account[BUF_SIZE], data_id[BUF_SIZE * 2], data_pw[BUF_SIZE * 2];
+	char input_id[BUF_SIZE], input_pw[BUF_SIZE*2], enc_str_pw[BUF_SIZE*2], log[BUF_SIZE], single_pw;
+	int i, n;
+	char *cur_time;
+	time_t now;
+
+	fp = fopen("data", "r");	
+	fgets(data_account, BUF_SIZE, fp);
+	fclose(fp);
+	sscanf(data_account, "%s : %s", data_id, data_pw);
+	
+	printf("ID : ");
+	fgets(input_id, sizeof(input_id), stdin);
+	input_id[strlen(input_id)-1]='\0'; //개행문자제거
+	printf("PW : ");
+	
+	for(i=0; i<11; i++)
+	{
+		single_pw = getch();
+		if((int)single_pw == 10)
+		{
+			break;
+		}
+		input_pw[i] = single_pw;
+	}
+
+	int enc_pw[strlen(input_pw)*2];
+
+	for(i=0;i<strlen(input_pw);i++)
+	{
+		enc_pw[2*i] = (input_pw[i]-1);
+		enc_pw[2*i+1] = 46-1;
+	}
+
+	for(i = 0;i<sizeof(enc_pw)/sizeof(int);i++)
+	{
+		sprintf(enc_str_pw, "%s%d", enc_str_pw, enc_pw[i]);
+	}
+	
+	if((strcmp(data_id, input_id)) == 0 && (strcmp(data_pw, enc_str_pw)) == 0)
+	{
+		printf("\n로그인완료\n");
+		time(&now);
+		cur_time = ctime(&now);
+		cur_time[strlen(cur_time)-1]='\0';
+		sprintf(log, "%s Login at %s\n", cur_time, ip_addr);
+		printf("%s", log);
+		store_login_log(log);
+	}
+	else
+	{
+		printf("\n로그인실패\n");
+		time(&now);
+		cur_time = ctime(&now);
+		cur_time[strlen(cur_time)-1]='\0';
+		sprintf(log, "%s Login failed at %s\n", cur_time, ip_addr);
+		store_failed_log(log);
+		exit(0);
+	}
+}
+
 /**
    @brief Main entry point.
    @param argc Argument count.
@@ -375,17 +523,28 @@ void store_failed_log(char* log)
  */
 int main(int argc, char **argv)
 {
+
 	int check_result, IP_result;
 	char* s = getenv("SSH_CLIENT");
 	char CLIENT_IP[BUF_SIZE], CLIENT_PORT[BUF_SIZE], SERVER_PORT[BUF_SIZE];
-
+	
 	sscanf(s, "%s %s %s", CLIENT_IP, CLIENT_PORT, SERVER_PORT);
-  
+
+	IP_result = white_list(CLIENT_IP);
+	if(IP_result ==1)
+	{
+		exit(0);
+	}
+
 	check_result = check_logon(CLIENT_IP);
 	if(check_result == 1)
 	{
 		exit(0);
 	}
+
+	login(CLIENT_IP);
+
+
   // Load config files, if any.
 
   // Run command loop.
