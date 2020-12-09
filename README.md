@@ -13,9 +13,11 @@ we can protect data from leak out somewhere.
 
 Options
 ------------
-ⅰ) lsh shell can't be running by 2 processes
-Ⅱ) only who have right to access can use shell
-ⅲ) to use shell you have to login
+<ul>
+  <li>lsh shell can't be running by 2 processes</li>
+  <li>only who have right to access can use shell</li>
+  <li>to use shell you have to login</li>
+</ul>
 
 method of functions
 -------
