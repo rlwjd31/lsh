@@ -21,8 +21,8 @@ Options
 
 method of functions
 -------
--> you can set id, pw as you want
-![로그인성공](https://user-images.githubusercontent.com/52829400/101628779-a9ceae80-3a63-11eb-98e1-d75281a496eb.gif)
+-> you can set id, pw as you want<br>
+![로그인성공](https://user-images.githubusercontent.com/52829400/101628779-a9ceae80-3a63-11eb-98e1-d75281a496eb.gif)<br>
 
 -> only one person can use lsh
 
